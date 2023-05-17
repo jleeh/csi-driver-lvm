@@ -120,29 +120,40 @@ func (cs *controllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 
 	volumeContext["RequiredBytes"] = size
 
-	// schedulded node of the pod is the first entry in the preferred segment
-	node := req.GetAccessibilityRequirements().GetPreferred()[0].GetSegments()[topologyKeyNode]
-	topology := []*csi.Topology{{
-		Segments: map[string]string{topologyKeyNode: node},
-	}}
-	klog.Infof("creating volume %s on node: %s", req.GetName(), node)
+	// iterate through the preferred nodes until no error, as first preferred node may lack disk space
+	preferred := req.GetAccessibilityRequirements().GetPreferred()
+	var topology []*csi.Topology
+	var err error
 
-	va := volumeAction{
-		action:           actionTypeCreate,
-		name:             req.GetName(),
-		nodeName:         node,
-		size:             req.GetCapacityRange().GetRequiredBytes(),
-		lvmType:          lvmType,
-		devicesPattern:   cs.devicesPattern,
-		pullPolicy:       cs.pullPolicy,
-		provisionerImage: cs.provisionerImage,
-		kubeClient:       cs.kubeClient,
-		namespace:        cs.namespace,
-		vgName:           cs.vgName,
-		hostWritePath:    cs.hostWritePath,
+	for _, node := range preferred {
+		nodeName := node.GetSegments()[topologyKeyNode]
+		topology = []*csi.Topology{{
+			Segments: map[string]string{topologyKeyNode: nodeName},
+		}}
+		klog.Infof("creating volume %s on node: %s", req.GetName(), node)
+
+		va := volumeAction{
+			action:           actionTypeCreate,
+			name:             req.GetName(),
+			nodeName:         nodeName,
+			size:             req.GetCapacityRange().GetRequiredBytes(),
+			lvmType:          lvmType,
+			devicesPattern:   cs.devicesPattern,
+			pullPolicy:       cs.pullPolicy,
+			provisionerImage: cs.provisionerImage,
+			kubeClient:       cs.kubeClient,
+			namespace:        cs.namespace,
+			vgName:           cs.vgName,
+			hostWritePath:    cs.hostWritePath,
+		}
+		err = createProvisionerPod(ctx, va)
+		if err != nil {
+			klog.Errorf("error creating provisioner pod :%v,", err)
+		} else {
+			break
+		}
 	}
-	if err := createProvisionerPod(ctx, va); err != nil {
-		klog.Errorf("error creating provisioner pod :%v", err)
+	if err != nil {
 		return nil, err
 	}
 
