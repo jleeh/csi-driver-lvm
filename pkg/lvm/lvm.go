@@ -283,7 +283,7 @@ func createGetCapacityPod(ctx context.Context, va volumeAction) (int64, error) {
 	provisionerPod, deleteFunc, err := createPod(
 		ctx,
 		"sh",
-		[]string{"-c", fmt.Sprintf("pvs %s %s %s %s", va.devicesPattern, "--units=B", "--reportformat=json", "--nosuffix")},
+		[]string{"-c", fmt.Sprintf("pvs %s %s %s %s %s", va.devicesPattern, "--units=B", "--reportformat=json", "--nosuffix", "2> /dev/null")},
 		va,
 	)
 	if err != nil {
